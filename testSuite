@@ -1,0 +1,107 @@
+#!/bin/bash
+
+#checking for incorrect number of arguments
+if [ $# -ne 2 ]; then
+    echo "Incorrect number of arguments, need 2 arguments" 1>&2
+	exit 1
+fi
+
+#creating variables for test suite file and program file
+testFiles=$1
+program=$2
+
+#checking if test suite exists and is readable
+if [ ! -r "$testFiles" ]; then
+	echo "Sorry, $testFiles either does not exist, or is not readable" 1>&2
+	exit 1
+fi
+
+#checking if program file exists and is readable and executable
+if [ ! -x "$program" ]; then
+	echo "Sorry, $program either does not exist, or is not executable." 1>&2
+	exit 1
+fi
+
+#keeping track of exit status
+declare -i exitStatus=0;
+
+#keeping track of number of different lines between expected and actual
+declare -i difference=0;
+
+
+for stem in $(cat $testFiles); do
+
+    # if args file exists but is not readable
+    if [[ -f "$stem.args" ]] && [[ ! -r "$stem.args" ]]; then
+        echo "Sorry, $stem.args exists but is not readable" 1>&2
+        exitStatus=1;
+
+    #if .out file doesn't exist or isn't readable
+    elif [[ ! -r "$stem.out" ]] || [[ ! -f "$stem.out" ]]; then
+            echo "$stem.out does not exist or is not readable" 1>&2
+            exit 1
+    else
+        
+        # if args file does not exist, run program without command line arguments
+        if [[ ! -f "$stem.args" ]]; then 
+
+            tempFile=$(mktemp /tmp/abc-script.XXXXXX)
+
+            # if there is a .in file
+            if [[ -r "$stem.in" ]]; then
+                $program<$stem.in>$tempFile
+            
+            #if there isn't a .in file
+            else 
+                $program > $tempFile
+            fi           
+
+            if [ "$(diff $stem.out $tempFile)" != "" ]; then
+                echo "Test failed: $stem"
+                echo "Args:"
+                echo "Input:"
+                if [[ -r "$stem.in" ]]; then
+                    cat $stem.in
+                fi
+                echo "Expected:"
+                cat $stem.out #>&1
+                echo "Actual:"
+                cat $tempFile #>&1
+            fi
+
+        # if args file exists, run program with command line arguments
+        else 
+            tempFile=$(mktemp /tmp/abc-script.XXXXXX)
+
+            # if there is a .in file
+            if [[ -r "$stem.in" ]]; then
+                $program $(cat $stem.args)<$stem.in>$tempFile
+            
+            #if there isn't a .in file
+            else 
+                $program $(cat $stem.args) > $tempFile
+            fi   
+
+            if [ "$(diff $stem.out $tempFile)" != ""  ]; then
+                echo "Test failed: $stem"
+                echo "Args:"
+                cat $stem.args #>&1
+                echo "Input:"
+                if [[ -r "$stem.in" ]]; then
+                    cat $stem.in
+                fi
+                echo "Expected:"
+                cat $stem.out #>&1
+                #echo "$(diff $stem.out $tempFile)"
+                echo "Actual:"
+                cat $tempFile #>&1
+            fi
+        fi      
+    fi
+done
+
+if [ $exitStatus -eq 1 ]; then
+    exit 1
+else
+    exit 0
+fi
